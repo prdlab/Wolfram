@@ -1,0 +1,123 @@
+---
+title: "Fourier transform"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+We can use the source function to run the contents of another R script file.
+
+```{r}
+source("setup.R")
+```
+
+Now let's bring in the data that I have in the R project repo file: ./data/pse
+
+# PSE experiment data
+
+```{r}
+results <- list.files("data/pse")
+raw_data <- NULL
+
+for (i in seq_along(results)) {
+  temp <- import(paste0("data/pse/", results[i]))
+  combined_data <- rbind(raw_data, temp)
+}
+```
+
+# random cleaning unique to my experiment
+
+```{r}
+# add count on file to sum data points later
+
+combined_data <- combined_data %>%
+  mutate('count' = rep(1,nrow(combined_data)))
+
+# switch "correct answer" to "right"
+left_rightdata <- combined_data
+rightdata <- left_rightdata %>%
+  filter(Staircase.CorrectAns == 'right')
+leftdata <- left_rightdata %>%
+  filter(Staircase.CorrectAns == 'left')
+rightdata$Staircase.response <- ifelse(rightdata$Staircase.response == 0, 1, 0)
+combined_data <- rbind(leftdata, rightdata)
+
+# arrange back to original staircase order
+combined_data <- combined_data %>%
+  arrange(Staircase.thisRepN)
+```
+
+Now we can use dplyr to summarize the data:
+
+```{r}
+effects <- combined_data %>%
+  group_by(participant, Staircase.SOA) %>%
+  summarize(avg_eff = mean(Staircase.intensity))
+```
+
+```{r}
+# I use this if I want to look at individual subject data but in here we only have one subject so far
+subject_no <- 'it_021522'
+
+combined_data %>%
+  filter(participant == subject_no) %>%
+  group_by(participant, 'Displacement' = Staircase.intensity, Staircase.SOA) %>%
+  summarize(PSE = mean(Staircase.response)) %>%
+  ggplot(aes(Displacement, PSE, color = as.factor(Staircase.SOA))) +
+  geom_point() +
+  theme_minimal() +
+  ggtitle(subject_no)
+```
+
+# Modulation exp data
+
+```{r}
+results_mod <- list.files("data/modulation")
+raw_data_mod <- NULL
+
+for (i in seq_along(results_mod)) {
+  temp <- import(paste0("data/modulation/", results_mod[i]))
+  mod_data <- rbind(raw_data_mod, temp)
+}
+```
+
+Using dplyr to organize my data file - the Select() function to grab the variables I'm interested in and Mutate() to code the character string 'left' and 'right' into binary.
+
+```{r}
+fe_mod <- mod_data %>%
+  select(participant, PSE, SOA, trials.thisTrialN, trial_resp_2.keys) %>%
+  mutate(LR_coded = ifelse(mod_data$trial_resp_2.keys == 'left', 1, 0),
+         SOA = mod_data$SOA * 10)
+
+```
+
+More organization with dplyr and then graph it
+
+```{r}
+mod_eff <- fe_mod %>%
+  #this line of code is useful if you want to filter to look at one subject at a time
+  #filter(participant == subject_no) %>%
+  group_by(SOA) %>%
+  summarize(PSE = mean(LR_coded))
+
+mod_eff %>%
+  ggplot(aes(SOA, PSE)) +
+  geom_point() +
+  geom_hline(yintercept = 0.5, linetype = 'dashed') +
+  theme_minimal()
+```
+
+# Fourier Transform on Behavioral Data
+
+
+```{r}
+fft_list <- spectrum(mod_eff)
+fft_vector <- fft_list[["freq"]]
+fft(fft_vector)
+```
+
+```{r}
+fft_vector <- mod_eff$PSE
+fft(fft_vector)
+```
+
